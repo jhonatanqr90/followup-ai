@@ -88,6 +88,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [Google],
 })
 ```
+##### ES: Por qué así:
+- `NextAuth(...)` devuelve un objeto con todo lo que necesitas.
+- `handlers` son las funciones GET/POST para la API route.
+- `auth()` se usa en Server Components y middleware para leer la sesión.
+- `signIn / signOut` se usan en Client Components.
+
+##### EN: Why this way:
+- `NextAuth(...)` returns an object with everything you need.
+- `handlers` are the GET/POST functions for the API route.
+- `auth()` reads the session in Server Components and middleware.
+- `signIn / signOut` are used in Client Components.
 
 #### `app/api/auth/[...nextauth]/route.ts`
 
@@ -95,6 +106,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 import { handlers } from "@/auth"
 export const { GET, POST } = handlers
 ```
+##### ES: Por qué así:
+`Por qué [...nextauth]:` es una catch-all route. NextAuth maneja múltiples sub-rutas (/api/auth/signin, /api/auth/callback/google, /api/auth/session, etc.) desde un solo archivo.
+
+##### EN: Why this way:
+`Why [...nextauth]:` it's a catch-all route. NextAuth handles multiple sub-routes (/api/auth/signin, /api/auth/callback/google, /api/auth/session, etc.) from a single file.
 
 #### `.env.local`
 
@@ -103,6 +119,20 @@ AUTH_GOOGLE_ID=
 AUTH_GOOGLE_SECRET=
 AUTH_SECRET=un-secreto-local-de-prueba
 ```
+#### ES: Variables de entorno que NextAuth v5 espera
+- Para Google Provider, por defecto busca: `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_SECRET`
+- `AUTH_SECRET` se usa para firmar las cookies de sesión. En local puedes generar uno con: 
+  ```bash 
+  openssl rand -base64 32
+  ```
+- En Vercel lo configuras en Settings → Environment Variables.
+#### EN: Environment variables NextAuth v5 expects
+- For Google Provider, by default it looks for: `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_SECRET`
+- `AUTH_SECRET` signs session cookies. In local dev generate one with: 
+  ```bash 
+  openssl rand -base64 32
+  ```
+- In Vercel set it in Settings → Environment Variables.
 
 ---
 
@@ -238,4 +268,66 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   )
 }
 ```
+
+#### `middleware.ts`
+
+```ts
+export { auth as middleware } from "@/auth"
+
+export const config = {
+  matcher: ["/dashboard/:path*", "/api/generate/:path*"],
+}
+```
+
+##### ES: Por qué así:
+`middleware.ts` corre antes de renderizar la página. Exportar `auth` como middleware hace que NextAuth verifique la sesión automáticamente. `matcher` indica qué rutas proteger.
+
+Protegemos tanto `/dashboard/:path*` (futura página de historial) como `/api/generate/:path*` (API de IA). Esto evita que usuarios no autenticados consuman la API de generación de mensajes.
+
+##### EN: Why this way:
+`middleware.ts` runs before the page renders. Exporting `auth` as middleware makes NextAuth check the session automatically. `matcher` tells which routes to protect.
+
+We protect both `/dashboard/:path*` (future history page) and `/api/generate/:path*` (AI API). This prevents unauthenticated users from consuming the message generation API.
+
+---
+
+## 2026-10-02 — Sesión 1 (continuación): Ecosistema Google AI / Change from OpenAI to Gemini
+
+### ES: ¿Qué es qué?
+
+| Nombre | Qué es | Analogía |
+|--------|--------|----------|
+| **Gemini** | Los modelos de IA de Google (como GPT de OpenAI). | GPT-4, GPT-4o |
+| **Google AI Studio** | Una web para probar prompts y generar API keys gratis. | OpenAI Playground |
+| **Vertex AI** | La plataforma de ML/IA de Google Cloud para empresas. | AWS SageMaker / Azure ML |
+| **Google Cloud Console** | Donde gestionas proyectos, billing, APIs, OAuth. | Dashboard de AWS |
+
+### EN: What is what?
+
+| Name | What it is | Analogy |
+|------|-----------|---------|
+| **Gemini** | Google's AI models (like OpenAI's GPT). | GPT-4, GPT-4o |
+| **Google AI Studio** | A web UI to test prompts and get free API keys. | OpenAI Playground |
+| **Vertex AI** | Google Cloud's enterprise ML/AI platform. | AWS SageMaker / Azure ML |
+| **Google Cloud Console** | Where you manage projects, billing, APIs, OAuth. | AWS Dashboard |
+
+### ES: ¿Por qué cambiamos de OpenAI a Gemini?
+
+La API key de OpenAI devolvió el error `insufficient_quota` / `credit_balance_exhausted`: no tenía créditos. Como ya teníamos Google Cloud configurado, migrar a **Google AI Studio + Gemini 1.5 Flash** fue el camino más rápido y gratuito.
+
+### EN: Why did we switch from OpenAI to Gemini?
+
+The OpenAI API key returned `insufficient_quota` / `credit_balance_exhausted`: no credits left. Since we already had Google Cloud configured, migrating to **Google AI Studio + Gemini 1.5 Flash** was the fastest and free path.
+
+### ES: Otros proveedores para conocer
+
+- **Groq**: muy rápido, buen tier gratuito.
+- **OpenRouter**: unifica muchos modelos.
+- **Cohere / Mistral**: alternativas europeas.
+
+### EN: Other providers to know
+
+- **Groq**: very fast, good free tier.
+- **OpenRouter**: unifies many models.
+- **Cohere / Mistral**: European alternatives.
 

@@ -1,5 +1,5 @@
-import Image from "next/image";
 import { AuthButtons } from "./components/auth-buttons";
+import { MessageGenerator } from "./components/message-generator";
 
 export default function Home() {
   return (
@@ -18,6 +18,7 @@ export default function Home() {
             <AuthButtons />
           </div>
         </div>
+        <MessageGenerator />
       </main>
     </div>
   );
