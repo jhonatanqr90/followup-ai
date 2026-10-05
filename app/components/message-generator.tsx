@@ -56,7 +56,7 @@ export function MessageGenerator() {
         if (done) break
         setMessage((prev) => prev + decoder.decode(value, { stream: true }))
       }
-    } catch (err) {
+    } catch {
       setError("Network error. Please try again.")
     } finally {
       setLoading(false)

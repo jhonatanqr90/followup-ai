@@ -325,9 +325,156 @@ The OpenAI API key returned `insufficient_quota` / `credit_balance_exhausted`: n
 - **OpenRouter**: unifica muchos modelos.
 - **Cohere / Mistral**: alternativas europeas.
 
-### EN: Other providers to know
+---
 
-- **Groq**: very fast, good free tier.
-- **OpenRouter**: unifies many models.
-- **Cohere / Mistral**: European alternatives.
+## 2026-10-05 — Sesión 2: Refactorización a capas (domain / infra / API)
+
+### ES: Problema
+
+El endpoint `app/api/generate/route.ts` tenía todo mezclado:
+- Configuración del provider de IA.
+- Schema de validación Zod.
+- Construcción del prompt.
+- Llamada al modelo.
+- Manejo de errores HTTP.
+
+Esto dificulta los tests, la reutilización y el mantenimiento.
+
+### EN: Problem
+
+The `app/api/generate/route.ts` endpoint had everything mixed together:
+- AI provider configuration.
+- Zod validation schema.
+- Prompt construction.
+- Model call.
+- HTTP error handling.
+
+This makes testing, reuse, and maintenance harder.
+
+### ES: Solución: separación por capas
+
+Aplicamos una arquitectura en capas simple:
+
+| Capa | Archivo | Responsabilidad |
+|------|---------|-----------------|
+| **Validación** | `lib/validations/generate.ts` | Schema Zod + tipo TypeScript. |
+| **Infraestructura IA** | `lib/ai/openrouter.ts` | Provider de OpenRouter. |
+| **Dominio** | `lib/followup/prompt.ts` | Lógica pura: construir el prompt a partir de los datos. |
+| **Aplicación/API** | `app/api/generate/route.ts` | Orquestar: validar → construir prompt → llamar IA → responder. |
+
+### EN: Solution: layered architecture
+
+We apply a simple layered architecture:
+
+| Layer | File | Responsibility |
+|-------|------|----------------|
+| **Validation** | `lib/validations/generate.ts` | Zod schema + TypeScript type. |
+| **AI Infrastructure** | `lib/ai/openrouter.ts` | OpenRouter provider. |
+| **Domain** | `lib/followup/prompt.ts` | Pure logic: build the prompt from input data. |
+| **Application/API** | `app/api/generate/route.ts` | Orchestrate: validate → build prompt → call AI → respond. |
+
+### ES: Beneficios
+
+- **Tests fáciles:** `buildPrompt` es una función pura, se testea sin mocks.
+- **Reutilización:** el provider de OpenRouter se puede usar en otros endpoints.
+- **Mantenimiento:** cambiar el modelo o el prompt no toca el handler HTTP.
+- **Entrevista:** demuestra que entiendes separación de responsabilidades.
+
+### EN: Benefits
+
+- **Easy tests:** `buildPrompt` is a pure function, testable without mocks.
+- **Reuse:** OpenRouter provider can be used in other endpoints.
+- **Maintenance:** changing the model or prompt doesn't touch the HTTP handler.
+- **Interview:** shows you understand separation of concerns.
+
+### Snippets clave / Key snippets
+
+#### `lib/validations/generate.ts`
+
+```ts
+import { z } from "zod"
+
+export const generateSchema = z.object({
+  amount: z.number().positive(),
+  daysLate: z.number().int().nonnegative(),
+  tone: z.enum(["friendly", "firm", "urgent"]),
+  language: z.enum(["es", "en"]),
+})
+
+export type GenerateInput = z.infer<typeof generateSchema>
+```
+
+##### ES: Por qué así:
+El schema y el tipo viven juntos. `GenerateInput` se exporta para reutilizarlo en API, dominio y cliente.
+
+##### EN: Why this way:
+The schema and type live together. `GenerateInput` is exported for reuse in API, domain, and client.
+
+#### `lib/followup/prompt.ts`
+
+```ts
+import type { GenerateInput } from "@/lib/validations/generate"
+
+export function buildPrompt(input: GenerateInput): string {
+  return `Write a ${input.tone} follow-up message for a client who owes $${input.amount} and is ${input.daysLate} days late...`
+}
+```
+
+##### ES: Por qué así:
+Función pura: sin side effects, sin dependencias de framework. Fácil de testear.
+
+##### EN: Why this way:
+Pure function: no side effects, no framework dependencies. Easy to test.
+
+#### `lib/ai/openrouter.ts`
+
+```ts
+import { createOpenAI } from "@ai-sdk/openai"
+
+export const openrouter = createOpenAI({
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY,
+  headers: {
+    "HTTP-Referer": "https://followup-ai-sigma.vercel.app",
+    "X-Title": "followup-ai",
+  },
+})
+```
+
+##### ES: Por qué así:
+La configuración del provider está aislada. Si cambiamos de OpenRouter a OpenAI, solo tocamos este archivo.
+
+##### EN: Why this way:
+Provider config is isolated. If we switch from OpenRouter to OpenAI, we only touch this file.
+
+#### `app/api/generate/route.ts`
+
+```ts
+import { openrouter } from "@/lib/ai/openrouter"
+import { generateSchema } from "@/lib/validations/generate"
+import { buildPrompt } from "@/lib/followup/prompt"
+
+export async function POST(req: Request) {
+  const body = await req.json()
+  const parsed = generateSchema.safeParse(body)
+  if (!parsed.success) return Response.json({ error: parsed.error.flatten() }, { status: 400 })
+
+  const prompt = buildPrompt(parsed.data)
+
+  const result = streamText({
+    model: openrouter("openrouter/free"),
+    prompt,
+  })
+
+  return createTextStreamResponse({
+    stream: toTextStream({ stream: result.stream }),
+  })
+}
+```
+
+##### ES: Por qué así:
+El handler solo orquesta: valida → construye prompt → llama IA → responde. No sabe cómo se construye el prompt ni cómo se configura el provider.
+
+##### EN: Why this way:
+The handler only orchestrates: validate → build prompt → call AI → respond. It doesn't know how the prompt is built or how the provider is configured.
 
