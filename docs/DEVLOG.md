@@ -478,3 +478,200 @@ El handler solo orquesta: valida → construye prompt → llama IA → responde.
 ##### EN: Why this way:
 The handler only orchestrates: validate → build prompt → call AI → respond. It doesn't know how the prompt is built or how the provider is configured.
 
+---
+
+## 2026-10-06 — Preguntas conceptuales: `lib/` raíz vs `app/lib/` + arquitectura vs patrón
+
+### ES: ¿Por qué `lib/` está a la par de `app/`?
+
+`lib/` raíz es la convención estándar de Next.js para **código compartido global** que no depende de rutas:
+
+- Validaciones (`lib/validations/`)
+- Clientes de API/IA (`lib/ai/`)
+- Lógica de negocio pura (`lib/followup/`)
+- Utilidades generales (`lib/utils.ts`)
+
+No está atado a ninguna ruta.
+
+### EN: Why is `lib/` at the same level as `app/`?
+
+Root `lib/` is the standard Next.js convention for **globally shared code** that does not depend on routes:
+
+- Validations (`lib/validations/`)
+- API/AI clients (`lib/ai/`)
+- Pure business logic (`lib/followup/`)
+- General utilities (`lib/utils.ts`)
+
+It is not tied to any route.
+
+### ES: ¿Y `app/lib/`?
+
+`app/lib/` es para código **específico del App Router**:
+
+- Helpers usados solo por Server Components o Server Actions.
+- Funciones que usan `headers()`, `cookies()`, `redirect()` de Next.js.
+
+### EN: And `app/lib/`?
+
+`app/lib/` is for **App Router-specific code**:
+
+- Helpers used only by Server Components or Server Actions.
+- Functions that use Next.js `headers()`, `cookies()`, `redirect()`.
+
+### ES: Regla simple
+
+| Caso | Dónde ponerlo |
+|---|---|
+| Schema Zod reutilizable | `lib/validations/` |
+| Provider de IA | `lib/ai/` |
+| Función pura de negocio | `lib/followup/` |
+| Helper que usa `cookies()` de Next.js | `app/lib/` |
+| Utilidad genérica | `lib/utils.ts` |
+
+### EN: Simple rule
+
+| Case | Where to put it |
+|---|---|
+| Reusable Zod schema | `lib/validations/` |
+| AI provider | `lib/ai/` |
+| Pure business function | `lib/followup/` |
+| Helper using Next.js `cookies()` | `app/lib/` |
+| Generic utility | `lib/utils.ts` |
+
+### ES: ¿Arquitectura o patrón?
+
+**Ambos**, pero en niveles distintos.
+
+**Arquitectura:** Layered Architecture (arquitectura en capas). Dividimos el sistema en capas con responsabilidades definidas: API, dominio, infraestructura, validación.
+
+**Patrones de diseño aplicados:**
+- Separation of Concerns.
+- Single Responsibility Principle.
+- Dependency Inversion (ligero): `route.ts` depende de abstracciones, no de detalles.
+
+### EN: Architecture or pattern?
+
+**Both**, but at different levels.
+
+**Architecture:** Layered Architecture. We divide the system into layers with defined responsibilities: API, domain, infrastructure, validation.
+
+**Design patterns applied:**
+- Separation of Concerns.
+- Single Responsibility Principle.
+- Dependency Inversion (light): `route.ts` depends on abstractions, not details.
+
+### ES: Analogía rápida
+
+Restaurante:
+- **API (`route.ts`)**: el mesero que toma el pedido.
+- **Dominio (`prompt.ts`)**: el chef que prepara la receta.
+- **Infraestructura (`openrouter.ts`)**: el proveedor de ingredientes.
+- **Validación (`generateSchema.ts`)**: el control de calidad.
+
+Cada uno tiene su rol y no se mete en el trabajo del otro.
+
+### EN: Quick analogy
+
+Restaurant:
+- **API (`route.ts`)**: waiter taking the order.
+- **Domain (`prompt.ts`)**: chef cooking the recipe.
+- **Infrastructure (`openrouter.ts`)**: ingredient supplier.
+- **Validation (`generateSchema.ts`)**: quality control.
+
+Each has its role and does not interfere with the other's work.
+
+---
+
+## 2026-10-06 — Sesión 2 (continuación): Tests unitarios
+
+### ES: Concepto
+
+`buildPrompt` es una función pura: dado el mismo input siempre devuelve el mismo output. Eso la hace ideal para tests unitarios sin mocks ni llamadas de red.
+
+`generateSchema` también es fácil de testear con `safeParse`:
+- Caso válido → `success: true`.
+- Caso inválido → `success: false`.
+
+### EN: Concept
+
+`buildPrompt` is a pure function: given the same input it always returns the same output. That makes it ideal for unit tests without mocks or network calls.
+
+`generateSchema` is also easy to test with `safeParse`:
+- Valid case → `success: true`.
+- Invalid case → `success: false`.
+
+### Snippets clave / Key snippets
+
+#### `lib/followup/prompt.test.ts`
+
+```ts
+import { describe, it, expect } from "vitest"
+import { buildPrompt } from "./prompt"
+
+describe("buildPrompt", () => {
+  it("builds a friendly english prompt", () => {
+    const result = buildPrompt({
+      amount: 1500,
+      daysLate: 7,
+      tone: "friendly",
+      language: "en",
+    })
+
+    expect(result).toContain("friendly")
+    expect(result).toContain("$1500")
+    expect(result).toContain("7 days late")
+    expect(result).toContain("English")
+  })
+})
+```
+
+##### ES: Por qué así:
+Testeamos que el prompt contenga las variables clave. No comparamos el string completo porque el prompt puede cambiar; lo importante es que incluya los datos correctos.
+
+##### EN: Why this way:
+We test that the prompt contains the key variables. We don't compare the full string because the prompt may change; what matters is that it includes the correct data.
+
+#### `lib/validations/generate.test.ts`
+
+```ts
+import { describe, it, expect } from "vitest"
+import { generateSchema } from "./generate"
+
+describe("generateSchema", () => {
+  it("accepts valid input", () => {
+    const result = generateSchema.safeParse({
+      amount: 100,
+      daysLate: 5,
+      tone: "firm",
+      language: "es",
+    })
+
+    expect(result.success).toBe(true)
+  })
+
+  it("rejects negative amount", () => {
+    const result = generateSchema.safeParse({
+      amount: -10,
+      daysLate: 5,
+      tone: "firm",
+      language: "es",
+    })
+
+    expect(result.success).toBe(false)
+  })
+})
+```
+
+##### ES: Por qué así:
+`safeParse` no lanza excepciones, así que podemos testear tanto el caso positivo como el negativo sin `try/catch`.
+
+##### EN: Why this way:
+`safeParse` does not throw exceptions, so we can test both positive and negative cases without `try/catch`.
+
+### Resultado
+
+```text
+Test Files  3 passed (3)
+Tests       6 passed (6)
+```
+
